@@ -54,14 +54,18 @@ client.on('messageCreate', async (message) => {
       return message.reply('❌ Only Administrators can set up the tournament!');
     }
 
-    // Command should look like: !setup-turnier #cup-registration #cup-rules
     const args = message.content.split(' ');
     const targetChannel = message.mentions.channels.first(); // First mentioned channel (#cup-registration)
     const rulesChannel = message.mentions.channels.at(1); // Second mentioned channel (#cup-rules)
 
     if (!targetChannel || !rulesChannel) {
-      return message.reply('❌ Please mention both channels! Example: `!setup-turnier #cup-registration #cup-rules`');
+      return message.reply('❌ Please mention both channels! Example: `!setup-turnier #cup-registration #cup-rules Saturday 21:00`');
     }
+
+    // Extracting Day and Time from arguments (everything after the second channel mention)
+    // Args are: [0]!setup-turnier, [1]#channel1, [2]#channel2, [3]Day, [4]Time
+    const dayInput = args[3] || 'Wednesday';
+    const timeInput = args[4] || '20:15';
 
     const data = loadData();
     data.teams = [];
@@ -148,12 +152,12 @@ client.on('messageCreate', async (message) => {
 
     await rulesChannel.send({ embeds: [rulesEmbed] });
 
-    // 2. Calendar Embed for #cup-calendar
+    // 2. Calendar Embed for #cup-calendar (Dynamic Day & Time)
     const calendarEmbed = new EmbedBuilder()
       .setTitle('📅 VGPL CUP - TOURNAMENT CALENDAR')
       .setDescription(
         `**VGPL Training Cup**\n` +
-        `**Day:** Wednesday | **Time:** 8:15 PM CEST\n` +
+        `**Day:** ${dayInput} | **Time:** ${timeInput} CEST\n` +
         `**Status:** 🟢 Registration Open\n\n` +
         `### 🕗 Schedule & Rules\n` +
         `* **Start:** The Cup starts as soon as we have at least 4 confirmed teams!\n` +
