@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const {
   Client,
   GatewayIntentBits,
@@ -16,8 +17,27 @@ const {
 } = require('discord.js');
 
 const app = express();
-app.get('/', (req, res) => res.send('VGPL Cup Bot is running successfully!'));
-app.listen(process.env.PORT || 3000);
+
+// Extrem schnelle Antwort für den externen Weckruf (Ping)
+app.get('/', (req, res) => {
+  res.status(200).send('VGPL Cup Bot ist aktiv und wach!');
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log('Webserver läuft auf Port ' + (process.env.PORT || 3000));
+});
+
+// Interner Backup-Pinger
+const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL || 'https://vgpl-cup-bot.onrender.com';
+setInterval(() => {
+  if (RENDER_EXTERNAL_URL) {
+    https.get(RENDER_EXTERNAL_URL, (res) => {
+      // Ruhiger Ping im Hintergrund
+    }).on('error', (err) => {
+      console.error('Keep-Alive Fehler:', err.message);
+    });
+  }
+}, 4 * 60 * 1000); // Alle 4 Minuten intern pingen
 
 const client = new Client({
   intents: [
@@ -45,7 +65,7 @@ function loadData() {
       },
       currentSpieltag: 1,
       deadlines: {},
-      pendingScores: {} // Speichert unbestätigte Ergebnisse
+      pendingScores: {}
     }));
   }
   const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf-8'));
@@ -58,7 +78,7 @@ function saveData(data) {
 }
 
 client.once('ready', () => {
-  console.log('VGPL Cup Bot is online as: ' + client.user.tag);
+  console.log('VGPL Cup Bot ist online als: ' + client.user.tag);
 });
 
 // Admin-Befehl: Setup
@@ -67,7 +87,7 @@ client.on('messageCreate', async (message) => {
 
   if (message.content.startsWith('!setup-turnier')) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ Only Administrators can set up the tournament!');
+      return message.reply('❌ Nur Administratoren können das Turnier einrichten!');
     }
 
     const args = message.content.split(' ');
@@ -77,7 +97,7 @@ client.on('messageCreate', async (message) => {
     const rulesChannel = message.mentions.channels.at(2);
 
     if (!calendarChannel || !registrationChannel || !rulesChannel) {
-      return message.reply('❌ Please mention all 3 channels!');
+      return message.reply('❌ Bitte markiere alle 3 Kanäle!');
     }
 
     const dayInput = args[4] || 'Saturday';
@@ -137,13 +157,13 @@ client.on('messageCreate', async (message) => {
     );
 
     await registrationChannel.send({ embeds: [registrationEmbed], components: [row] });
-    await message.reply('✅ Setup completed successfully!');
+    await message.reply('✅ Setup erfolgreich abgeschlossen!');
   }
 
   // Admin-Befehl: Spielplan erstellen
   if (message.content.startsWith('!spielplan')) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ Only Admins can submit the matchday schedule!');
+      return message.reply('❌ Nur Admins können den Spielplan erstellen!');
     }
 
     const content = message.content.replace('!spielplan', '').trim();
@@ -153,7 +173,7 @@ client.on('messageCreate', async (message) => {
 
     const data = loadData();
     if (!data.groups[groupLetter]) {
-      return message.reply('❌ Invalid Group!');
+      return message.reply('❌ Ungültige Gruppe!');
     }
 
     const matchesRaw = parts.slice(1);
@@ -193,7 +213,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Helfer-Funktion: Gruppen-Board posten / editieren
+// Gruppen-Board posten / editieren
 async function postGroupBoard(channel, groupLetter) {
   const data = loadData();
   const group = data.groups[groupLetter];
@@ -307,7 +327,6 @@ client.on('interactionCreate', async (interaction) => {
   const data = loadData();
 
   if (interaction.isButton()) {
-    // 1. Registrierungen
     if (interaction.customId === 'turnier_anmelden') {
       if (data.status !== 'open') return interaction.reply({ content: '❌ Registration is closed.', ephemeral: true });
       if (data.teams.some(t => t.userId === interaction.user.id)) return interaction.reply({ content: '❌ Already registered.', ephemeral: true });
@@ -322,33 +341,31 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.customId === 'turnier_abmelden') {
+      await interaction.deferReply({ ephemeral: true });
       data.teams = data.teams.filter(t => t.userId !== interaction.user.id);
       saveData(data);
-      await interaction.reply({ content: 'Successfully left.', ephemeral: true });
+      await interaction.editReply({ content: 'Successfully left.' });
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
     // Zeitschutz für den Check-In-Button (Nur Samstags 19:00 - 19:45 CEST)
     if (interaction.customId === 'turnier_checkin') {
       const now = new Date();
-     
-      // CEST Zeitzone erzwingen für genaue Prüfung
       const options = { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', weekday: 'long' };
       const formatter = new Intl.DateTimeFormat('en-US', options);
       const parts = formatter.formatToParts(now);
      
-      const weekday = parts.find(p => p.type === 'weekday').value; // z.B. "Saturday"
+      const weekday = parts.find(p => p.type === 'weekday').value;
       const hour = parseInt(parts.find(p => p.type === 'hour').value);
       const minute = parseInt(parts.find(p => p.type === 'minute').value);
 
       const isSaturday = weekday === 'Saturday';
       const currentMinutes = hour * 60 + minute;
-      const startCheckInMinutes = 19 * 60; // 19:00 Uhr
-      const endCheckInMinutes = 19 * 60 + 45; // 19:45 Uhr
+      const startCheckInMinutes = 19 * 60; // 19:00
+      const endCheckInMinutes = 19 * 60 + 45; // 19:45
 
       const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
 
-      // Nur Admins dürfen den Check-In außerhalb der regulären Zeiten testen
       if (!isSaturday || currentMinutes < startCheckInMinutes || currentMinutes > endCheckInMinutes) {
         if (!isAdmin) {
           return interaction.reply({
@@ -360,13 +377,14 @@ client.on('interactionCreate', async (interaction) => {
         }
       }
 
+      await interaction.deferReply({ ephemeral: true });
       const team = data.teams.find(t => t.userId === interaction.user.id);
-      if (!team) return interaction.reply({ content: '❌ Register first!', ephemeral: true });
-      if (team.checkedIn) return interaction.reply({ content: '✅ Already checked in!', ephemeral: true });
+      if (!team) return interaction.editReply({ content: '❌ Register first!' });
+      if (team.checkedIn) return interaction.editReply({ content: '✅ Already checked in!' });
 
       team.checkedIn = true;
       saveData(data);
-      await interaction.reply({ content: '🟢 Checked in successfully! Your team is marked as READY.', ephemeral: true });
+      await interaction.editReply({ content: '🟢 Checked in successfully! Your team is marked as READY.' });
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
@@ -377,7 +395,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.reply({ content: '🔒 Closed!', ephemeral: true });
     }
 
-    // 2. Score Eintragung (Öffnet Modal)
+    // 2. Score Eintragung
     if (interaction.customId.startsWith('eintragen_')) {
       const groupLetter = interaction.customId.replace('eintragen_', '');
       const modal = new ModalBuilder().setCustomId('modal_ergebnis_' + groupLetter).setTitle('Submit Score');
@@ -388,7 +406,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.showModal(modal);
     }
 
-    // 3. Score Bestätigung (Verify System mit Kapitäns- & Adminschutz)
+    // 3. Score Bestätigung (Verify System)
     if (interaction.customId.startsWith('confirm_')) {
       const pendingId = interaction.customId.replace('confirm_', '');
       const pending = data.pendingScores[pendingId];
@@ -408,6 +426,7 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
+      await interaction.deferReply();
       const group = data.groups[pending.groupLetter];
       const match = group.matches.find(m => m.team1 === pending.team1 && m.team2 === pending.team2);
 
@@ -417,15 +436,15 @@ client.on('interactionCreate', async (interaction) => {
         delete data.pendingScores[pendingId];
         saveData(data);
 
-        await interaction.reply({ content: `✅ Score for **${pending.team1} vs ${pending.team2} (${pending.score1}:${pending.score2})** has been confirmed!` });
+        await interaction.editReply({ content: `✅ Score for **${pending.team1} vs ${pending.team2} (${pending.score1}:${pending.score2})** has been confirmed!` });
         await interaction.message.delete().catch(() => {});
         await postGroupBoard(interaction.channel, pending.groupLetter);
       } else {
-        await interaction.reply({ content: '❌ Match not found in schedule anymore!', ephemeral: true });
+        await interaction.editReply({ content: '❌ Match not found in schedule anymore!' });
       }
     }
 
-    // 4. Score Ablehnung (Dispute mit Kapitäns- & Adminschutz)
+    // 4. Score Ablehnung (Dispute)
     if (interaction.customId.startsWith('dispute_')) {
       const pendingId = interaction.customId.replace('dispute_', '');
       const pending = data.pendingScores[pendingId];
@@ -445,10 +464,11 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
 
+      await interaction.deferReply();
       delete data.pendingScores[pendingId];
       saveData(data);
 
-      await interaction.reply({ content: `⚠️ **Score rejected!** The team **${pending.team2}** has disputed the reported score (${pending.score1}:${pending.score2}). Please contact an Administrator to clarify.` });
+      await interaction.editReply({ content: `⚠️ **Score rejected!** The team **${pending.team2}** has disputed the reported score (${pending.score1}:${pending.score2}). Please contact an Administrator to clarify.` });
       await interaction.message.delete().catch(() => {});
     }
 
@@ -465,21 +485,23 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'modal_anmeldung') {
+      await interaction.deferReply({ ephemeral: true });
       const clubName = interaction.fields.getTextInputValue('club_name');
       const eaId = interaction.fields.getTextInputValue('ea_id');
       const rules = interaction.fields.getTextInputValue('rules').toUpperCase().trim();
 
-      if (rules !== 'YES' && rules !== 'JA') return interaction.reply({ content: '❌ Confirm with YES!', ephemeral: true });
+      if (rules !== 'YES' && rules !== 'JA') return interaction.editReply({ content: '❌ Confirm with YES!' });
 
       data.teams.push({ userId: interaction.user.id, clubName: clubName, eaId: eaId, checkedIn: false });
       saveData(data);
      
-      await interaction.reply({ content: '✅ Team registered!', ephemeral: true });
+      await interaction.editReply({ content: '✅ Team registered!' });
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
     // Score Einreichung -> Erstellt Bestätigungsanfrage
     if (interaction.customId.startsWith('modal_ergebnis_')) {
+      await interaction.deferReply({ ephemeral: true });
       const groupLetter = interaction.customId.replace('modal_ergebnis_', '');
       const matchText = interaction.fields.getTextInputValue('match_id');
       const scoreText = interaction.fields.getTextInputValue('match_score');
@@ -489,10 +511,10 @@ client.on('interactionCreate', async (interaction) => {
         matchText.toLowerCase().includes(m.team2.toLowerCase())
       );
 
-      if (!match) return interaction.reply({ content: '❌ No matching fixture found. Verify club names!', ephemeral: true });
+      if (!match) return interaction.editReply({ content: '❌ No matching fixture found. Verify club names!' });
 
       const scores = scoreText.split(':');
-      if (scores.length !== 2) return interaction.reply({ content: '❌ Use home:away format like 2:1', ephemeral: true });
+      if (scores.length !== 2) return interaction.editReply({ content: '❌ Use home:away format like 2:1' });
 
       const team1Db = data.teams.find(t => t.clubName.toLowerCase() === match.team1.toLowerCase());
       const team2Db = data.teams.find(t => t.clubName.toLowerCase() === match.team2.toLowerCase());
@@ -502,9 +524,8 @@ client.on('interactionCreate', async (interaction) => {
       const isTeam2Captain = team2Db && interaction.user.id === team2Db.userId;
 
       if ((team1Db || team2Db) && !isTeam1Captain && !isTeam2Captain && !isAdmin) {
-        return interaction.reply({
-          content: `❌ Only the captains of **${match.team1}** or **${match.team2}**, or a Tournament Administrator can submit scores for this match!`,
-          ephemeral: true
+        return interaction.editReply({
+          content: `❌ Only the captains of **${match.team1}** or **${match.team2}**, or a Tournament Administrator can submit scores for this match!`
         });
       }
 
@@ -518,7 +539,7 @@ client.on('interactionCreate', async (interaction) => {
       };
       saveData(data);
 
-      await interaction.reply({ content: '📩 Score submitted! Waiting for opponent confirmation.', ephemeral: true });
+      await interaction.editReply({ content: '📩 Score submitted! Waiting for opponent confirmation.' });
 
       const confirmEmbed = new EmbedBuilder()
         .setTitle('🤝 Score Confirmation Required')
