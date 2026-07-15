@@ -55,7 +55,7 @@ client.once('ready', () => {
   console.log('VGPL Cup Bot ist online als: ' + client.user.tag);
 });
 
-// Admin-Befehl: Setup des Cups
+// Admin-Befehl: Setup des Cups mit 3 Kanälen
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -65,15 +65,19 @@ client.on('messageCreate', async (message) => {
     }
 
     const args = message.content.split(' ');
-    const targetChannel = message.mentions.channels.first(); // #cup-anmeldung
-    const rulesChannel = message.mentions.channels.at(1); // #cup-regeln
+   
+    // Die 3 erwähnten Kanäle auslesen
+    const calendarChannel = message.mentions.channels.at(0); // #📅│cup-calendar
+    const registrationChannel = message.mentions.channels.at(1); // #📝│cup-registration
+    const rulesChannel = message.mentions.channels.at(2); // #📜│cup-rules
 
-    if (!targetChannel || !rulesChannel) {
-      return message.reply('❌ Bitte erwähne beide Kanäle! Beispiel: !setup-turnier #cup-anmeldung #cup-regeln Samstag 21:00');
+    if (!calendarChannel || !registrationChannel || !rulesChannel) {
+      return message.reply('❌ Bitte erwähne alle 3 Kanäle! Beispiel: `!setup-turnier #cup-calendar #cup-registration #cup-rules Samstag 21:00`');
     }
 
-    const dayInput = args[3] || 'Mittwoch';
-    const timeInput = args[4] || '20:15';
+    // Wochentag und Uhrzeit auslesen (Standard: Samstag 21:00)
+    const dayInput = args[4] || 'Samstag';
+    const timeInput = args[5] || '21:00';
 
     const data = loadData();
     data.teams = [];
@@ -85,7 +89,7 @@ client.on('messageCreate', async (message) => {
     };
     saveData(data);
 
-    // 1. Offizielle Regeln posten
+    // 1. Offizielle Regeln posten (In den Regeln-Kanal)
     const rulesEmbed = new EmbedBuilder()
       .setTitle('🏆 VGPL TRAINING CUP - OFFIZIELLES REGELWERK')
       .setDescription(
@@ -103,22 +107,22 @@ client.on('messageCreate', async (message) => {
 
     await rulesChannel.send({ embeds: [rulesEmbed] });
 
-    // 2. Kalender-Embed posten
+    // 2. Kalender-Embed posten (In den Kalender-Kanal)
     const calendarEmbed = new EmbedBuilder()
       .setTitle('📅 VGPL CUP - TURNIERKALENDER')
       .setDescription(
         '**VGPL Training Cup**\n' +
         '**Tag:** ' + dayInput + ' | **Uhrzeit:** ' + timeInput + ' Uhr CEST\n' +
         '**Status:** 🟢 Anmeldung geöffnet\n\n' +
-        '➡️ **Hier anmelden:** ' + targetChannel.toString() + '\n' +
+        '➡️ **Hier anmelden:** ' + registrationChannel.toString() + '\n' +
         '📖 **Regelwerk lesen:** ' + rulesChannel.toString()
       )
       .setColor('#0099ff')
       .setTimestamp();
 
-    await message.channel.send({ embeds: [calendarEmbed] });
+    await calendarChannel.send({ embeds: [calendarEmbed] });
 
-    // 3. Registrierungs-Board
+    // 3. Registrierungs-Board mit Buttons posten (In den Anmelde-Kanal)
     const registrationEmbed = createRegistrationEmbed(data.teams);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('turnier_anmelden').setLabel('Anmelden').setStyle(ButtonStyle.Success),
@@ -126,8 +130,13 @@ client.on('messageCreate', async (message) => {
       new ButtonBuilder().setCustomId('turnier_schliessen').setLabel('Anmeldung schließen (Admin)').setStyle(ButtonStyle.Secondary)
     );
 
-    await targetChannel.send({ embeds: [registrationEmbed], components: [row] });
-    await message.reply('✅ Setup erfolgreich abgeschlossen!');
+    await registrationChannel.send({ embeds: [registrationEmbed], components: [row] });
+   
+    await message.reply('✅ Setup erfolgreich abgeschlossen!\n' +
+      '• Regeln gepostet in ' + rulesChannel.toString() + '\n' +
+      '• Kalender gepostet in ' + calendarChannel.toString() + '\n' +
+      '• Anmeldeboard gepostet in ' + registrationChannel.toString()
+    );
   }
 
   // Admin-Befehl: Spielplan eintragen
