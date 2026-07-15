@@ -29,16 +29,19 @@ const client = new Client({
 
 const DATA_FILE = path.join(__dirname, 'turnier_data.json');
 
-// Load and save database
+// Datenbank laden und speichern (Unterstützt Gruppen A-F)
 function loadData() {
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify({
       teams: [],
       status: 'open',
       groups: {
-        'A': { teams: [], matches: [] },
-        'B': { teams: [], matches: [] },
-        'C': { teams: [], matches: [] }
+        'A': { teams: [], matches: [], boardMessageId: null },
+        'B': { teams: [], matches: [], boardMessageId: null },
+        'C': { teams: [], matches: [], boardMessageId: null },
+        'D': { teams: [], matches: [], boardMessageId: null },
+        'E': { teams: [], matches: [], boardMessageId: null },
+        'F': { teams: [], matches: [], boardMessageId: null }
       },
       currentSpieltag: 1,
       deadlines: {}
@@ -81,9 +84,12 @@ client.on('messageCreate', async (message) => {
     data.teams = [];
     data.status = 'open';
     data.groups = {
-      'A': { teams: [], matches: [] },
-      'B': { teams: [], matches: [] },
-      'C': { teams: [], matches: [] }
+      'A': { teams: [], matches: [], boardMessageId: null },
+      'B': { teams: [], matches: [], boardMessageId: null },
+      'C': { teams: [], matches: [], boardMessageId: null },
+      'D': { teams: [], matches: [], boardMessageId: null },
+      'E': { teams: [], matches: [], boardMessageId: null },
+      'F': { teams: [], matches: [], boardMessageId: null }
     };
     saveData(data);
 
@@ -226,6 +232,7 @@ client.on('messageCreate', async (message) => {
     const matchesRaw = parts.slice(1);
     data.groups[groupLetter].matches = [];
     data.groups[groupLetter].teams = [];
+    data.groups[groupLetter].boardMessageId = null; // Zurücksetzen für neue Nachrichten-Verknüpfung
 
     matchesRaw.forEach((matchStr, i) => {
       const teams = matchStr.split('vs');
@@ -292,7 +299,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Helper function: Group Board Embed
+// Helper function: Group Board Embed (Optimized Mobile View & Message Editing)
 async function postGroupBoard(channel, groupLetter) {
   const data = loadData();
   const group = data.groups[groupLetter];
@@ -302,18 +309,18 @@ async function postGroupBoard(channel, groupLetter) {
  
   const ticks = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
  
-  let tableHeader = ticks + '\n#   TEAM                 GP   W:D:L   GOALS  +/-   PTS\n';
+  // Extrem kompakte Tabelle für perfekte mobile Darstellung
+  let tableHeader = ticks + '\n#  TEAM         P   W:D:L   GD  PTS\n';
   let tableBody = '';
   stats.forEach((team, index) => {
     const rank = String(index + 1).padEnd(2);
-    const name = team.name.substring(0, 18).padEnd(20);
-    const sp = String(team.sp).padEnd(4);
+    const name = team.name.substring(0, 12).padEnd(12);
+    const sp = String(team.sp).padEnd(3);
     const sun = (team.s + ':' + team.u + ':' + team.n).padEnd(7);
-    const tore = (team.goals + ':' + team.conceded).padEnd(6);
-    const diff = (team.diff >= 0 ? '+' + team.diff : String(team.diff)).padEnd(5);
+    const diff = (team.diff >= 0 ? '+' + team.diff : String(team.diff)).padEnd(4);
     const pkt = String(team.pkt);
 
-    tableBody += rank + '  ' + name + ' ' + sp + ' ' + sun + ' ' + tore + ' ' + diff + ' ' + pkt + '\n';
+    tableBody += rank + ' ' + name + ' ' + sp + ' ' + sun + ' ' + diff + ' ' + pkt + '\n';
   });
   const tableString = tableHeader + tableBody + ticks;
 
@@ -347,7 +354,26 @@ async function postGroupBoard(channel, groupLetter) {
       .setStyle(ButtonStyle.Secondary)
   );
 
-  await channel.send({ embeds: [embed], components: [row] });
+  let boardMessage = null;
+
+  // Versuchen, die bereits existierende Nachricht zu editieren, um Spam zu verhindern
+  if (group.boardMessageId) {
+    try {
+      const existingMsg = await channel.messages.fetch(group.boardMessageId);
+      if (existingMsg) {
+        boardMessage = await existingMsg.edit({ embeds: [embed], components: [row] });
+      }
+    } catch (err) {
+      // Nachricht existiert nicht mehr im Kanal, wir senden eine neue
+    }
+  }
+
+  // Wenn keine Nachricht editiert wurde, senden wir eine neue und speichern die ID
+  if (!boardMessage) {
+    boardMessage = await channel.send({ embeds: [embed], components: [row] });
+    group.boardMessageId = boardMessage.id;
+    saveData(data);
+  }
 }
 
 function calculateStats(group) {
