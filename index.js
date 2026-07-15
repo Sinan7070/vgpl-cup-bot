@@ -328,14 +328,45 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
+    // Zeitschutz für den Check-In-Button (Nur Samstags 19:00 - 19:45 CEST)
     if (interaction.customId === 'turnier_checkin') {
+      const now = new Date();
+     
+      // CEST Zeitzone erzwingen für genaue Prüfung
+      const options = { timeZone: 'Europe/Berlin', hour: '2-digit', minute: '2-digit', weekday: 'long' };
+      const formatter = new Intl.DateTimeFormat('en-US', options);
+      const parts = formatter.formatToParts(now);
+     
+      const weekday = parts.find(p => p.type === 'weekday').value; // z.B. "Saturday"
+      const hour = parseInt(parts.find(p => p.type === 'hour').value);
+      const minute = parseInt(parts.find(p => p.type === 'minute').value);
+
+      const isSaturday = weekday === 'Saturday';
+      const currentMinutes = hour * 60 + minute;
+      const startCheckInMinutes = 19 * 60; // 19:00 Uhr
+      const endCheckInMinutes = 19 * 60 + 45; // 19:45 Uhr
+
+      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+      // Nur Admins dürfen den Check-In außerhalb der regulären Zeiten testen
+      if (!isSaturday || currentMinutes < startCheckInMinutes || currentMinutes > endCheckInMinutes) {
+        if (!isAdmin) {
+          return interaction.reply({
+            content: '🔒 **Check-In is currently locked!**\n' +
+                     '› Check-In is **only** active on **Saturday between 19:00 and 19:45 CEST** (20:00 - 20:45 TRT).\n' +
+                     '› Please come back on Saturday inside the official window to complete your Check-In!',
+            ephemeral: true
+          });
+        }
+      }
+
       const team = data.teams.find(t => t.userId === interaction.user.id);
       if (!team) return interaction.reply({ content: '❌ Register first!', ephemeral: true });
       if (team.checkedIn) return interaction.reply({ content: '✅ Already checked in!', ephemeral: true });
 
       team.checkedIn = true;
       saveData(data);
-      await interaction.reply({ content: '🟢 Checked in successfully!', ephemeral: true });
+      await interaction.reply({ content: '🟢 Checked in successfully! Your team is marked as READY.', ephemeral: true });
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
@@ -366,12 +397,10 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: '❌ This submission was not found or is expired.', ephemeral: true });
       }
 
-      // Berechtigung prüfen: Nur der Gegner-Kapitän ODER ein Admin darf bestätigen
       const opponentTeam = data.teams.find(t => t.clubName.toLowerCase() === pending.team2.toLowerCase());
       const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
       const isOpponentCaptain = opponentTeam && interaction.user.id === opponentTeam.userId;
 
-      // Wenn das Team registriert ist, erzwingen wir die Prüfung (außer es ist ein Admin oder es war ein Test-Team)
       if (opponentTeam && !isOpponentCaptain && !isAdmin) {
         return interaction.reply({
           content: `❌ Only the captain of **${pending.team2}** (<@${opponentTeam.userId}>) or a Tournament Administrator can confirm this score!`,
@@ -449,7 +478,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
-    // Score Einreichung -> Erstellt Bestätigungsanfrage (GESICHERT!)
+    // Score Einreichung -> Erstellt Bestätigungsanfrage
     if (interaction.customId.startsWith('modal_ergebnis_')) {
       const groupLetter = interaction.customId.replace('modal_ergebnis_', '');
       const matchText = interaction.fields.getTextInputValue('match_id');
@@ -465,7 +494,6 @@ client.on('interactionCreate', async (interaction) => {
       const scores = scoreText.split(':');
       if (scores.length !== 2) return interaction.reply({ content: '❌ Use home:away format like 2:1', ephemeral: true });
 
-      // SICHERHEITS-PRÜFUNG: Nur die Kapitäne von Team 1 oder Team 2 ODER ein Administrator dürfen das Ergebnis eintragen!
       const team1Db = data.teams.find(t => t.clubName.toLowerCase() === match.team1.toLowerCase());
       const team2Db = data.teams.find(t => t.clubName.toLowerCase() === match.team2.toLowerCase());
       const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
@@ -473,7 +501,6 @@ client.on('interactionCreate', async (interaction) => {
       const isTeam1Captain = team1Db && interaction.user.id === team1Db.userId;
       const isTeam2Captain = team2Db && interaction.user.id === team2Db.userId;
 
-      // Wenn eines der Teams registriert ist, blockieren wir unbefugte Benutzer direkt
       if ((team1Db || team2Db) && !isTeam1Captain && !isTeam2Captain && !isAdmin) {
         return interaction.reply({
           content: `❌ Only the captains of **${match.team1}** or **${match.team2}**, or a Tournament Administrator can submit scores for this match!`,
@@ -493,7 +520,6 @@ client.on('interactionCreate', async (interaction) => {
 
       await interaction.reply({ content: '📩 Score submitted! Waiting for opponent confirmation.', ephemeral: true });
 
-      // Nachricht für den Gegner zum Bestätigen in den Gruppenkanal posten
       const confirmEmbed = new EmbedBuilder()
         .setTitle('🤝 Score Confirmation Required')
         .setDescription(
