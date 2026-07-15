@@ -61,7 +61,7 @@ client.once('ready', () => {
   console.log('VGPL Cup Bot is online as: ' + client.user.tag);
 });
 
-// Admin Command: Setup
+// Admin-Befehl: Setup
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -102,9 +102,9 @@ client.on('messageCreate', async (message) => {
       .setDescription(
         'These rules are strictly binding for all participating teams.\n\n' +
         '**» 5. SCORE REPORTING [MANDATORY]**\n' +
-        '› Home team reports the score via the bot ("Submit Score")\n' +
-        '› Away team must confirm the reported score via the green button in the channel!\n' +
-        '› Scores will NOT count without away team confirmation!'
+        '› Home or Away team reports the score via the bot ("Submit Score")\n' +
+        '› The opponent team must confirm the reported score via the green button in the channel!\n' +
+        '› Scores will NOT count without opponent team confirmation!'
       )
       .setColor('#ffcc00')
       .setTimestamp();
@@ -140,7 +140,7 @@ client.on('messageCreate', async (message) => {
     await message.reply('✅ Setup completed successfully!');
   }
 
-  // Admin Command: Spielplan
+  // Admin-Befehl: Spielplan erstellen
   if (message.content.startsWith('!spielplan')) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
       return message.reply('❌ Only Admins can submit the matchday schedule!');
@@ -193,7 +193,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Helper function: Group Board Embed
+// Helfer-Funktion: Gruppen-Board posten / editieren
 async function postGroupBoard(channel, groupLetter) {
   const data = loadData();
   const group = data.groups[groupLetter];
@@ -357,7 +357,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.showModal(modal);
     }
 
-    // 3. Score Bestätigung (Verify System)
+    // 3. Score Bestätigung (Verify System mit Kapitäns- & Adminschutz)
     if (interaction.customId.startsWith('confirm_')) {
       const pendingId = interaction.customId.replace('confirm_', '');
       const pending = data.pendingScores[pendingId];
@@ -366,31 +366,60 @@ client.on('interactionCreate', async (interaction) => {
         return interaction.reply({ content: '❌ This submission was not found or is expired.', ephemeral: true });
       }
 
-      // Den Spielplan-Match-Eintrag suchen und aktualisieren
+      // Berechtigung prüfen: Nur der Gegner-Kapitän ODER ein Admin darf bestätigen
+      const opponentTeam = data.teams.find(t => t.clubName.toLowerCase() === pending.team2.toLowerCase());
+      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+      const isOpponentCaptain = opponentTeam && interaction.user.id === opponentTeam.userId;
+
+      // Wenn das Team registriert ist, erzwingen wir die Prüfung (außer es ist ein Admin oder es war ein Test-Team)
+      if (opponentTeam && !isOpponentCaptain && !isAdmin) {
+        return interaction.reply({
+          content: `❌ Only the captain of **${pending.team2}** (<@${opponentTeam.userId}>) or a Tournament Administrator can confirm this score!`,
+          ephemeral: true
+        });
+      }
+
       const group = data.groups[pending.groupLetter];
       const match = group.matches.find(m => m.team1 === pending.team1 && m.team2 === pending.team2);
 
       if (match) {
         match.score1 = pending.score1;
         match.score2 = pending.score2;
-        delete data.pendingScores[pendingId]; // Aus den unbestätigten löschen
+        delete data.pendingScores[pendingId];
         saveData(data);
 
-        await interaction.reply({ content: `✅ Score for **${pending.team1} vs ${pending.team2} (${pending.score1}:${pending.score2})** has been confirmed and updated!` });
-        await interaction.message.delete().catch(() => {}); // Die Bestätigungsaufforderung löschen
+        await interaction.reply({ content: `✅ Score for **${pending.team1} vs ${pending.team2} (${pending.score1}:${pending.score2})** has been confirmed!` });
+        await interaction.message.delete().catch(() => {});
         await postGroupBoard(interaction.channel, pending.groupLetter);
       } else {
         await interaction.reply({ content: '❌ Match not found in schedule anymore!', ephemeral: true });
       }
     }
 
-    // 4. Score Ablehnung (Dispute)
+    // 4. Score Ablehnung (Dispute mit Kapitäns- & Adminschutz)
     if (interaction.customId.startsWith('dispute_')) {
       const pendingId = interaction.customId.replace('dispute_', '');
+      const pending = data.pendingScores[pendingId];
+
+      if (!pending) {
+        return interaction.reply({ content: '❌ This submission was not found or is expired.', ephemeral: true });
+      }
+
+      const opponentTeam = data.teams.find(t => t.clubName.toLowerCase() === pending.team2.toLowerCase());
+      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+      const isOpponentCaptain = opponentTeam && interaction.user.id === opponentTeam.userId;
+
+      if (opponentTeam && !isOpponentCaptain && !isAdmin) {
+        return interaction.reply({
+          content: `❌ Only the captain of **${pending.team2}** (<@${opponentTeam.userId}>) or a Tournament Administrator can dispute this score!`,
+          ephemeral: true
+        });
+      }
+
       delete data.pendingScores[pendingId];
       saveData(data);
 
-      await interaction.reply({ content: '⚠️ **Score rejected!** The opponent has disputed the score. Please contact an Administrator to clarify.' });
+      await interaction.reply({ content: `⚠️ **Score rejected!** The team **${pending.team2}** has disputed the reported score (${pending.score1}:${pending.score2}). Please contact an Administrator to clarify.` });
       await interaction.message.delete().catch(() => {});
     }
 
@@ -420,7 +449,7 @@ client.on('interactionCreate', async (interaction) => {
       await interaction.message.edit({ embeds: [createRegistrationEmbed(data.teams)] });
     }
 
-    // Score Einreichung -> Erstellt Bestätigungsanfrage
+    // Score Einreichung -> Erstellt Bestätigungsanfrage (GESICHERT!)
     if (interaction.customId.startsWith('modal_ergebnis_')) {
       const groupLetter = interaction.customId.replace('modal_ergebnis_', '');
       const matchText = interaction.fields.getTextInputValue('match_id');
@@ -435,6 +464,22 @@ client.on('interactionCreate', async (interaction) => {
 
       const scores = scoreText.split(':');
       if (scores.length !== 2) return interaction.reply({ content: '❌ Use home:away format like 2:1', ephemeral: true });
+
+      // SICHERHEITS-PRÜFUNG: Nur die Kapitäne von Team 1 oder Team 2 ODER ein Administrator dürfen das Ergebnis eintragen!
+      const team1Db = data.teams.find(t => t.clubName.toLowerCase() === match.team1.toLowerCase());
+      const team2Db = data.teams.find(t => t.clubName.toLowerCase() === match.team2.toLowerCase());
+      const isAdmin = interaction.member.permissions.has(PermissionFlagsBits.Administrator);
+
+      const isTeam1Captain = team1Db && interaction.user.id === team1Db.userId;
+      const isTeam2Captain = team2Db && interaction.user.id === team2Db.userId;
+
+      // Wenn eines der Teams registriert ist, blockieren wir unbefugte Benutzer direkt
+      if ((team1Db || team2Db) && !isTeam1Captain && !isTeam2Captain && !isAdmin) {
+        return interaction.reply({
+          content: `❌ Only the captains of **${match.team1}** or **${match.team2}**, or a Tournament Administrator can submit scores for this match!`,
+          ephemeral: true
+        });
+      }
 
       const pendingId = groupLetter + '-' + Date.now();
       data.pendingScores[pendingId] = {
@@ -499,4 +544,3 @@ function createRegistrationEmbed(teams) {
 }
 
 client.login(process.env.DISCORD_TOKEN);
-
