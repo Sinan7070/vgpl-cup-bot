@@ -16,7 +16,7 @@ const {
 } = require('discord.js');
 
 const app = express();
-app.get('/', (req, res) => res.send('VGPL Cup Bot läuft erfolgreich!'));
+app.get('/', (req, res) => res.send('VGPL Cup Bot is running successfully!'));
 app.listen(process.env.PORT || 3000);
 
 const client = new Client({
@@ -29,7 +29,7 @@ const client = new Client({
 
 const DATA_FILE = path.join(__dirname, 'turnier_data.json');
 
-// Datenbank laden und speichern
+// Load and save database
 function loadData() {
   if (!fs.existsSync(DATA_FILE)) {
     fs.writeFileSync(DATA_FILE, JSON.stringify({
@@ -52,31 +52,29 @@ function saveData(data) {
 }
 
 client.once('ready', () => {
-  console.log('VGPL Cup Bot ist online als: ' + client.user.tag);
+  console.log('VGPL Cup Bot is online as: ' + client.user.tag);
 });
 
-// Admin-Befehl: Setup des Cups mit 3 Kanälen
+// Admin Command: Setup of the Cup (Posts English rules, calendar and registration)
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   if (message.content.startsWith('!setup-turnier')) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ Nur Administratoren können das Turnier einrichten!');
+      return message.reply('❌ Only Administrators can set up the tournament!');
     }
 
     const args = message.content.split(' ');
    
-    // Die 3 erwähnten Kanäle auslesen
     const calendarChannel = message.mentions.channels.at(0); // #📅│cup-calendar
     const registrationChannel = message.mentions.channels.at(1); // #📝│cup-registration
     const rulesChannel = message.mentions.channels.at(2); // #📜│cup-rules
 
     if (!calendarChannel || !registrationChannel || !rulesChannel) {
-      return message.reply('❌ Bitte erwähne alle 3 Kanäle! Beispiel: `!setup-turnier #cup-calendar #cup-registration #cup-rules Samstag 21:00`');
+      return message.reply('❌ Please mention all 3 channels! Example: `!setup-turnier #cup-calendar #cup-registration #cup-rules Saturday 21:00`');
     }
 
-    // Wochentag und Uhrzeit auslesen (Standard: Samstag 21:00)
-    const dayInput = args[4] || 'Samstag';
+    const dayInput = args[4] || 'Saturday';
     const timeInput = args[5] || '21:00';
 
     const data = loadData();
@@ -89,60 +87,130 @@ client.on('messageCreate', async (message) => {
     };
     saveData(data);
 
-    // 1. Offizielle Regeln posten (In den Regeln-Kanal)
+    // 1. Official, complete Rulebook (In the Rules Channel) - Translated to English
     const rulesEmbed = new EmbedBuilder()
-      .setTitle('🏆 VGPL TRAINING CUP - OFFIZIELLES REGELWERK')
+      .setTitle('🏆 VGPL TRAINING CUP - OFFICIAL RULES')
       .setDescription(
-        'Diese Regeln sind für alle teilnehmenden Teams bindend. Mit der Anmeldung akzeptiert ihr diese automatisch.\n\n' +
-        '### » 1. TURNIERABLAUF\n' +
-        '› **Turnierstart:** Pünktlich zur angegebenen Uhrzeit\n' +
-        '› **Einladezeit:** Maximal 5 Minuten pro Match, um den Gegner einzuladen\n' +
-        '› **Kein Verlassen:** Sobald das Spiel läuft, darf kein Spieler die Partie verlassen\n\n' +
-        '### » 2. GRÖSSENBESCHRÄNKUNGEN DER SPIELER\n' +
-        'CBs: Max. 1.87 m (6\'2") | Alle anderen Positionen: Max. 1.82 m (6\'0")\n\n' +
-        '> ⚠️ **Ein Verstoß gegen diese Regeln führt zum sofortigen Defwin für den Gegner!**'
+        'These rules are strictly binding for all participating teams.\n' +
+        'By participating in the tournament, you automatically accept them.\n\n' +
+        '**» 1. TOURNAMENT FLOW**\n' +
+        '› **Tournament Start:** Usually 21:00 CEST\n' +
+        '› **Invite Time per Match:** 5 minutes\n' +
+        '› Once the match has started, players are not allowed to leave the lobby\n\n' +
+        '**» 2. TEAM REQUIREMENTS**\n' +
+        '```\n' +
+        '[+] 11 Players Required\n' +
+        '[+] Any Required\n' +
+        '[+] Goalkeeper (GK) Required\n' +
+        '[-] Less than 11 players = Defwin for opponent\n' +
+        '```\n\n' +
+        '**» 3. GAMEPLAY & IN-GAME BEHAVIOR**\n' +
+        '**Forbidden:**\n' +
+        '› Standing on the goal line during free kicks\n' +
+        '› Blocking or obstructing the goalkeeper in the penalty box\n' +
+        '› Bugusing -> Immediate disqualification\n\n' +
+        '**Allowed:**\n' +
+        '› Panenka penalties\n' +
+        '› All tactical formations\n\n' +
+        '**» 4. STREAM & PROOF REQUIREMENT**\n' +
+        '› Stream requirement is active for all matches\n' +
+        '› Quality control is the responsibility of the teams\n\n' +
+        '**Video proof required for:**\n' +
+        '› Player height/weight checks (Club Management Lobby screen)\n' +
+        '› Both teams must be clearly visible in the video\n' +
+        '› *⚠️ Violation = Immediate Defwin for opponent*\n\n' +
+        '**» 5. SCORE REPORTING [MANDATORY]**\n' +
+        '› Home team reports the score via the bot\n' +
+        '› Away team must confirm the reported score\n' +
+        '› Scores will NOT count without away team confirmation\n' +
+        '› *Incorrect or delayed reports are subject to tournament sanctions*\n\n' +
+        '**» 6. HEIGHT & WEIGHT RULES [MANDATORY]**\n' +
+        '**3-Back Formations:**\n' +
+        '```\n' +
+        'Goalkeeper:           Any\n' +
+        'CBs:                  max. 1.87 m (6\'2") | 79 kg\n' +
+        'All other positions:  max. 1.82 m (6\'0")\n' +
+        '```\n' +
+        '**4-Back Formations:**\n' +
+        '```\n' +
+        'Goalkeeper:           Any\n' +
+        '2 CBs + 1 CDM/Fullback: max. 1.87 m (6\'2") | 79 kg\n' +
+        'All other positions:  max. 1.82 m (6\'0")\n' +
+        '```\n' +
+        '› **Playstyles:** All Playstyles allowed\n\n' +
+        '**» 7. TIME OF HEIGHT CONTROL**\n' +
+        '› Height checks must be requested latest by halftime break\n' +
+        '› *Requests made after the halftime whistle are invalid*\n\n' +
+        '**» 8. PENALTIES & DECISIONS**\n' +
+        'Rule violations lead to (depending on severity):\n' +
+        '› Defwin (3:0)\n' +
+        '› Disqualification\n' +
+        '› Tournament ban\n' +
+        '› *Decisions of the Administration are final and absolute*\n\n' +
+        '**» 9. FAIRPLAY**\n' +
+        '› Fairness, structure and competitive eSports\n' +
+        '› Unsporting behavior will be strictly penalized.'
       )
       .setColor('#ffcc00')
       .setTimestamp();
 
     await rulesChannel.send({ embeds: [rulesEmbed] });
 
-    // 2. Kalender-Embed posten (In den Kalender-Kanal)
+    // 2. Calendar Embed (In the Calendar Channel) - Translated to English
     const calendarEmbed = new EmbedBuilder()
-      .setTitle('📅 VGPL CUP - TURNIERKALENDER')
+      .setTitle('📅 VGPL CUP - TOURNAMENT CALENDAR')
       .setDescription(
         '**VGPL Training Cup**\n' +
-        '**Tag:** ' + dayInput + ' | **Uhrzeit:** ' + timeInput + ' Uhr CEST\n' +
-        '**Status:** 🟢 Anmeldung geöffnet\n\n' +
-        '➡️ **Hier anmelden:** ' + registrationChannel.toString() + '\n' +
-        '📖 **Regelwerk lesen:** ' + rulesChannel.toString()
+        '**Day:** ' + dayInput + ' | **Time:** ' + timeInput + ' CEST\n' +
+        '**Status:** 🟢 Registration Open\n\n' +
+        '📊 **Official Schedule (CEST):**\n' +
+        '› **19:00** - Registration Deadline (' + dayInput + ')\n' +
+        '› **19:00 - 19:45** - Team Check-In (Use Check-In Button)\n' +
+        '› **20:45** - Group Draw & Matchups Released\n' +
+        '› **21:00** - Tournament Start (Matchday 1)\n\n' +
+        '➡️ **Register here:** ' + registrationChannel.toString() + '\n' +
+        '📖 **Read the rules here:** ' + rulesChannel.toString()
       )
       .setColor('#0099ff')
       .setTimestamp();
 
     await calendarChannel.send({ embeds: [calendarEmbed] });
 
-    // 3. Registrierungs-Board mit Buttons posten (In den Anmelde-Kanal)
-    const registrationEmbed = createRegistrationEmbed(data.teams);
+    // 3. Registration Board (In the Registration Channel) - Translated to English
+    const registrationEmbed = new EmbedBuilder()
+      .setTitle('🏆 VGPL Cup - Registration Open')
+      .setDescription(
+        'Register your team here for the upcoming tournament!\n\n' +
+        '📊 **Schedule (' + dayInput + '):**\n' +
+        '› **19:00** - Registration Deadline\n' +
+        '› **19:00 - 19:45** - Check-In Phase (Click Check-In below)\n' +
+        '› **20:45** - Group Draw\n' +
+        '› **21:00** - Tournament Start\n\n' +
+        '### 📝 Registered Teams:\n*No teams registered yet.*'
+      )
+      .setColor('#00ff66')
+      .setTimestamp();
+
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('turnier_anmelden').setLabel('Anmelden').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('turnier_abmelden').setLabel('Abmelden').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('turnier_schliessen').setLabel('Anmeldung schließen (Admin)').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId('turnier_anmelden').setLabel('Register').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('turnier_abmelden').setLabel('Leave').setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId('turnier_checkin').setLabel('Check-In (19:00-19:45)').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('turnier_schliessen').setLabel('Close Registration (Admin)').setStyle(ButtonStyle.Secondary)
     );
 
     await registrationChannel.send({ embeds: [registrationEmbed], components: [row] });
    
-    await message.reply('✅ Setup erfolgreich abgeschlossen!\n' +
-      '• Regeln gepostet in ' + rulesChannel.toString() + '\n' +
-      '• Kalender gepostet in ' + calendarChannel.toString() + '\n' +
-      '• Anmeldeboard gepostet in ' + registrationChannel.toString()
+    await message.reply('✅ Setup completed successfully!\n' +
+      '• Rules posted in ' + rulesChannel.toString() + '\n' +
+      '• Calendar posted in ' + calendarChannel.toString() + '\n' +
+      '• Registration board posted in ' + registrationChannel.toString()
     );
   }
 
-  // Admin-Befehl: Spielplan eintragen
+  // Admin Command: Matchday Schedule entry
   if (message.content.startsWith('!spielplan')) {
     if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ Nur Admins können den Spielplan eintragen!');
+      return message.reply('❌ Only Admins can submit the matchday schedule!');
     }
 
     const content = message.content.replace('!spielplan', '').trim();
@@ -152,7 +220,7 @@ client.on('messageCreate', async (message) => {
 
     const data = loadData();
     if (!data.groups[groupLetter]) {
-      return message.reply('❌ Ungültige Gruppe! Nutze z. B.: !spielplan Gruppe B | TeamA vs TeamB');
+      return message.reply('❌ Invalid Group! Use e.g.: !spielplan Gruppe B | TeamA vs TeamB');
     }
 
     const matchesRaw = parts.slice(1);
@@ -181,8 +249,8 @@ client.on('messageCreate', async (message) => {
     });
 
     const now = new Date();
-    const einladeDeadline = new Date(now.getTime() + 5 * 60 * 1000); // +5 Minuten
-    const abgabeDeadline = new Date(now.getTime() + 20 * 60 * 1000); // +20 Minuten
+    const einladeDeadline = new Date(now.getTime() + 5 * 60 * 1000); // +5 Minutes
+    const abgabeDeadline = new Date(now.getTime() + 20 * 60 * 1000); // +20 Minutes
 
     data.deadlines[groupLetter] = {
       einladung: einladeDeadline.toISOString(),
@@ -211,8 +279,8 @@ client.on('messageCreate', async (message) => {
         saveData(currentData);
        
         const delayEmbed = new EmbedBuilder()
-          .setTitle('⚠️ SPIELTAG ABGELAUFEN (KEINE GNADE)')
-          .setDescription('Die Zeit für Spieltag ' + currentData.currentSpieltag + ' ist abgelaufen! Alle ungespielten Partien wurden automatisch als 0:0 gewertet. Es gibt keinen Einspruch bei verpasster Deadline!')
+          .setTitle('⚠️ MATCHDAY TIME EXPIRED (DEADLINE CLOSED)')
+          .setDescription('The time for matchday ' + currentData.currentSpieltag + ' has expired! All unplayed matches have been automatically scored as 0:0.')
           .setColor('#ff0000');
 
         await message.channel.send({ embeds: [delayEmbed] });
@@ -224,7 +292,7 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Hilfsfunktion: Schönes Gruppen-Board
+// Helper function: Group Board Embed
 async function postGroupBoard(channel, groupLetter) {
   const data = loadData();
   const group = data.groups[groupLetter];
@@ -232,10 +300,9 @@ async function postGroupBoard(channel, groupLetter) {
 
   const stats = calculateStats(group);
  
-  // Programmatisches Laden der Backticks, um Markdown-Spaltung im Bot-Generator komplett zu verhindern
   const ticks = String.fromCharCode(96) + String.fromCharCode(96) + String.fromCharCode(96);
  
-  let tableHeader = ticks + '\n#   TEAM                 SP   S:U:N   TORE   +/-   PKT\n';
+  let tableHeader = ticks + '\n#   TEAM                 GP   W:D:L   GOALS  +/-   PTS\n';
   let tableBody = '';
   stats.forEach((team, index) => {
     const rank = String(index + 1).padEnd(2);
@@ -259,12 +326,12 @@ async function postGroupBoard(channel, groupLetter) {
   const abgabeTime = new Date(deadline.abgabe).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
   const embed = new EmbedBuilder()
-    .setTitle('🏆 GRUPPE ' + groupLetter + ' - LIVE BOARD')
+    .setTitle('🏆 GROUP ' + groupLetter + ' - LIVE BOARD')
     .setDescription(
-      '🏁 **Einladezeit bis:** ' + einladungTime + ' Uhr (Gegner hat danach Anrecht auf Einladung/Defwin)\n' +
-      '⏱️ **Ergebnis eintragen bis:** ' + abgabeTime + ' Uhr\n\n' +
-      '📊 **Aktuelle Tabelle:**\n' + tableString + '\n' +
-      '⚽ **Spielplan:**\n' + spielplanString
+      '🏁 **Invite deadline:** ' + einladungTime + ' CEST (Opponent can request Defwin after this time)\n' +
+      '⏱️ **Submit scores until:** ' + abgabeTime + ' CEST\n\n' +
+      '📊 **Current Standings:**\n' + tableString + '\n' +
+      '⚽ **Fixtures:**\n' + spielplanString
     )
     .setColor('#0099ff')
     .setTimestamp();
@@ -272,11 +339,11 @@ async function postGroupBoard(channel, groupLetter) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('eintragen_' + groupLetter)
-      .setLabel('Spieltag eintragen')
+      .setLabel('Submit Score')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('video_' + groupLetter)
-      .setLabel('Größen-Video fordern')
+      .setLabel('Request Height Check Video')
       .setStyle(ButtonStyle.Secondary)
   );
 
@@ -333,13 +400,13 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.isButton()) {
     if (interaction.customId === 'turnier_anmelden') {
-      if (data.status !== 'open') return interaction.reply({ content: '❌ Die Anmeldung ist bereits geschlossen.', ephemeral: true });
-      if (data.teams.some(t => t.userId === interaction.user.id)) return interaction.reply({ content: '❌ Dein Team ist bereits angemeldet.', ephemeral: true });
+      if (data.status !== 'open') return interaction.reply({ content: '❌ Registration is currently closed.', ephemeral: true });
+      if (data.teams.some(t => t.userId === interaction.user.id)) return interaction.reply({ content: '❌ Your team is already registered.', ephemeral: true });
 
-      const modal = new ModalBuilder().setCustomId('modal_anmeldung').setTitle('VGPL Cup Anmeldung');
-      const clubInput = new TextInputBuilder().setCustomId('club_name').setLabel('Club-Name (Pro Clubs)').setStyle(TextInputStyle.Short).setRequired(true);
-      const eaInput = new TextInputBuilder().setCustomId('ea_id').setLabel('PSN-ID / EA-ID des Kapitäns').setStyle(TextInputStyle.Short).setRequired(true);
-      const ruleInput = new TextInputBuilder().setCustomId('rules').setLabel('Mind. 11 Spieler & Regeln gelesen? (JA)').setStyle(TextInputStyle.Short).setPlaceholder('Schreibe JA').setRequired(true);
+      const modal = new ModalBuilder().setCustomId('modal_anmeldung').setTitle('VGPL Cup Registration');
+      const clubInput = new TextInputBuilder().setCustomId('club_name').setLabel('Club Name (Pro Clubs)').setStyle(TextInputStyle.Short).setRequired(true);
+      const eaInput = new TextInputBuilder().setCustomId('ea_id').setLabel('Captain EA-ID / PSN-ID').setStyle(TextInputStyle.Short).setRequired(true);
+      const ruleInput = new TextInputBuilder().setCustomId('rules').setLabel('Read rules & min. 11 players? (YES)').setStyle(TextInputStyle.Short).setPlaceholder('Type YES').setRequired(true);
 
       modal.addComponents(new ActionRowBuilder().addComponents(clubInput), new ActionRowBuilder().addComponents(eaInput), new ActionRowBuilder().addComponents(ruleInput));
       await interaction.showModal(modal);
@@ -348,22 +415,44 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'turnier_abmelden') {
       data.teams = data.teams.filter(t => t.userId !== interaction.user.id);
       saveData(data);
-      await interaction.reply({ content: 'Erfolgreich vom Cup abgemeldet.', ephemeral: true });
+      await interaction.reply({ content: 'Successfully removed your team from the cup.', ephemeral: true });
+     
+      const updateEmbed = createRegistrationEmbed(data.teams);
+      await interaction.message.edit({ embeds: [updateEmbed] });
+    }
+
+    if (interaction.customId === 'turnier_checkin') {
+      const team = data.teams.find(t => t.userId === interaction.user.id);
+      if (!team) {
+        return interaction.reply({ content: '❌ You must register your team first before checking in!', ephemeral: true });
+      }
+
+      if (team.checkedIn) {
+        return interaction.reply({ content: '✅ Your team is already checked in!', ephemeral: true });
+      }
+
+      team.checkedIn = true;
+      saveData(data);
+
+      await interaction.reply({ content: '🟢 Check-In successful! Your team is marked as ready for the tournament.', ephemeral: true });
+
+      const updateEmbed = createRegistrationEmbed(data.teams);
+      await interaction.message.edit({ embeds: [updateEmbed] });
     }
 
     if (interaction.customId === 'turnier_schliessen') {
-      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Nur Administratoren können die Anmeldung schließen!', ephemeral: true });
+      if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) return interaction.reply({ content: '❌ Only Administrators can close the registration!', ephemeral: true });
       data.status = 'closed';
       saveData(data);
-      await interaction.reply({ content: '🔒 Die Anmeldung wurde erfolgreich geschlossen!', ephemeral: true });
+      await interaction.reply({ content: '🔒 Registration has been closed!', ephemeral: true });
     }
 
     if (interaction.customId.startsWith('eintragen_')) {
       const groupLetter = interaction.customId.replace('eintragen_', '');
      
-      const modal = new ModalBuilder().setCustomId('modal_ergebnis_' + groupLetter).setTitle('Ergebnis eintragen');
-      const matchInput = new TextInputBuilder().setCustomId('match_id').setLabel('Partie (z.B. Team A vs Team B)').setStyle(TextInputStyle.Short).setPlaceholder('Vereinsname vs Gegner').setRequired(true);
-      const scoreInput = new TextInputBuilder().setCustomId('match_score').setLabel('Ergebnis (z.B. 2:1)').setStyle(TextInputStyle.Short).setPlaceholder('Heim : Gast').setRequired(true);
+      const modal = new ModalBuilder().setCustomId('modal_ergebnis_' + groupLetter).setTitle('Submit Score');
+      const matchInput = new TextInputBuilder().setCustomId('match_id').setLabel('Fixture (e.g. Team A vs Team B)').setStyle(TextInputStyle.Short).setPlaceholder('Your Club vs Opponent').setRequired(true);
+      const scoreInput = new TextInputBuilder().setCustomId('match_score').setLabel('Result (e.g. 2:1)').setStyle(TextInputStyle.Short).setPlaceholder('Home : Away').setRequired(true);
 
       modal.addComponents(new ActionRowBuilder().addComponents(matchInput), new ActionRowBuilder().addComponents(scoreInput));
       await interaction.showModal(modal);
@@ -371,9 +460,9 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.customId.startsWith('video_')) {
       const groupLetter = interaction.customId.replace('video_', '');
-      const modal = new ModalBuilder().setCustomId('modal_video_' + groupLetter).setTitle('Größen-Video fordern');
-      const playerInput = new TextInputBuilder().setCustomId('player_name').setLabel('Gegnerischer Spielername').setStyle(TextInputStyle.Short).setRequired(true);
-      const clubInput = new TextInputBuilder().setCustomId('opponent_club').setLabel('Gegnerisches Team').setStyle(TextInputStyle.Short).setRequired(true);
+      const modal = new ModalBuilder().setCustomId('modal_video_' + groupLetter).setTitle('Request Height Check');
+      const playerInput = new TextInputBuilder().setCustomId('player_name').setLabel('Opponent Player Name').setStyle(TextInputStyle.Short).setRequired(true);
+      const clubInput = new TextInputBuilder().setCustomId('opponent_club').setLabel('Opponent Club Name').setStyle(TextInputStyle.Short).setRequired(true);
 
       modal.addComponents(new ActionRowBuilder().addComponents(playerInput), new ActionRowBuilder().addComponents(clubInput));
       await interaction.showModal(modal);
@@ -386,11 +475,15 @@ client.on('interactionCreate', async (interaction) => {
       const eaId = interaction.fields.getTextInputValue('ea_id');
       const rules = interaction.fields.getTextInputValue('rules').toUpperCase().trim();
 
-      if (rules !== 'YES' && rules !== 'JA') return interaction.reply({ content: '❌ Registrierung abgelehnt. Du musst mit JA bestätigen!', ephemeral: true });
+      if (rules !== 'YES' && rules !== 'JA') return interaction.reply({ content: '❌ Registration declined. You must confirm with YES!', ephemeral: true });
 
-      data.teams.push({ userId: interaction.user.id, clubName: clubName, eaId: eaId });
+      data.teams.push({ userId: interaction.user.id, clubName: clubName, eaId: eaId, checkedIn: false });
       saveData(data);
-      await interaction.reply({ content: '✅ Team **' + clubName + '** erfolgreich registriert!', ephemeral: true });
+     
+      await interaction.reply({ content: '✅ Team **' + clubName + '** successfully registered! Do not forget to click "Check-In" between 19:00 and 19:45 CEST!', ephemeral: true });
+     
+      const updateEmbed = createRegistrationEmbed(data.teams);
+      await interaction.message.edit({ embeds: [updateEmbed] });
     }
 
     if (interaction.customId.startsWith('modal_ergebnis_')) {
@@ -403,16 +496,16 @@ client.on('interactionCreate', async (interaction) => {
         matchText.toLowerCase().includes(m.team2.toLowerCase())
       );
 
-      if (!match) return interaction.reply({ content: '❌ Keine passende Partie gefunden. Bitte überprüfe die Teamnamen!', ephemeral: true });
+      if (!match) return interaction.reply({ content: '❌ No matching fixture found. Please verify the club names!', ephemeral: true });
 
       const scores = scoreText.split(':');
-      if (scores.length !== 2) return interaction.reply({ content: '❌ Ungültiges Format! Bitte nutze ein Format wie z. B. 2:1', ephemeral: true });
+      if (scores.length !== 2) return interaction.reply({ content: '❌ Invalid format! Please use home:away format like: 2:1', ephemeral: true });
 
       match.score1 = scores[0].trim();
       match.score2 = scores[1].trim();
       saveData(data);
 
-      await interaction.reply({ content: '✅ Ergebnis für **' + match.team1 + ' vs ' + match.team2 + ' (' + scoreText + ')** erfolgreich eingetragen!', ephemeral: true });
+      await interaction.reply({ content: '✅ Score for **' + match.team1 + ' vs ' + match.team2 + ' (' + scoreText + ')** submitted!', ephemeral: true });
       await postGroupBoard(interaction.channel, groupLetter);
     }
 
@@ -421,8 +514,8 @@ client.on('interactionCreate', async (interaction) => {
       const oppClub = interaction.fields.getTextInputValue('opponent_club');
 
       await interaction.reply({
-        content: '⚠️ **ACHTUNG!** Das gegnerische Team fordert einen Größen-Check für Spieler **' + pName + '** von **' + oppClub + '**!\n' +
-                 '› Ihr habt ab jetzt **15 Minuten** Zeit, das Video der Höhenberechtigung in diesem Kanal hochzuladen, ansonsten wird die Partie als Defwin für den Gegner gewertet!',
+        content: '⚠️ **ATTENTION!** An opponent has requested a height check video for player **' + pName + '** from **' + oppClub + '**!\n' +
+                 '› You have exactly **15 minutes** to upload the height/weight verification video in this channel, otherwise a Defwin (3:0) will be awarded to your opponent!',
         ephemeral: false
       });
     }
@@ -430,10 +523,27 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 function createRegistrationEmbed(teams) {
-  let list = teams.length === 0 ? '*Noch keine Teams registriert.*' : teams.map((t, i) => '**' + (i+1) + '.** <@' + t.userId + '> - **' + t.clubName + '** (' + t.eaId + ')').join('\n');
+  let list = '';
+  if (teams.length === 0) {
+    list = '*No teams registered yet.*';
+  } else {
+    list = teams.map((t, i) => {
+      const statusEmoji = t.checkedIn ? '🟢 Checked In' : '🔴 Not Checked In';
+      return '**' + (i+1) + '.** <@' + t.userId + '> - **' + t.clubName + '** (' + t.eaId + ') | Status: **' + statusEmoji + '**';
+    }).join('\n');
+  }
+
   return new EmbedBuilder()
-    .setTitle('🏆 VGPL Cup - Anmeldung geöffnet')
-    .setDescription('Registriere dein Team hier für den Cup!\n\n### 📝 Registrierte Teams:\n' + list)
+    .setTitle('🏆 VGPL Cup - Registration Open')
+    .setDescription(
+      'Register your team here for the upcoming tournament!\n\n' +
+      '📊 **Schedule:**\n' +
+      '› **19:00** - Registration Deadline\n' +
+      '› **19:00 - 19:45** - Check-In Phase (Click Check-In below)\n' +
+      '› **20:45** - Group Draw\n' +
+      '› **21:00** - Tournament Start\n\n' +
+      '### 📝 Registered Teams:\n' + list
+    )
     .setColor('#00ff66')
     .setTimestamp();
 }
